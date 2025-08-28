@@ -1,0 +1,7 @@
+# Environment
+src/model_garden_agent/.env
+.venv
+venv/
+
+# OS-generated files
+.DS_Store

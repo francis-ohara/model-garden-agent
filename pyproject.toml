@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "model-garden-agent"
+version = "0.1.0"
+description = "A chat-based AI agent for deploying generative AI models on Google Cloud Vertex AI, implemented using the Google Agent Development Kit."
+authors = ["Francis O'Hara Aidoo <franciskohara@gmail.com>"]
+license = "Apache-2.0"
+readme = "README.md"
+packages = [{ include = "model_garden_agent", from = "src" }]
+
+[tool.poetry.dependencies]
+python = ">=3.9,<4.0"
+google-adk = ">=1.13.0"
+google-cloud-aiplatform = ">=1.111.0"
+google-genai = ">=1.32.0"
+requests = ">=2.32.5"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "8.4.1"
+black = "25.1.0"
+mypy = "1.17.1"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
