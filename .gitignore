@@ -5,3 +5,6 @@ venv/
 
 # OS-generated files
 .DS_Store
+
+# Python artifacts
+src/model_garden_agent/__pycache__

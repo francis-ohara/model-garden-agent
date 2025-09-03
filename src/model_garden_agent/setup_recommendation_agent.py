@@ -11,9 +11,13 @@ InvalidArgument = exceptions.InvalidArgument
 GoogleAPIError = exceptions.GoogleAPIError
 ServiceUnavailable = exceptions.ServiceUnavailable
 
+PROJECT_ID = os.environ.get("GOOGLE_CLOUD_PROJECT", None)
+LOCATION = os.environ.get("GOOGLE_CLOUD_LOCATION", None)
+
+
 vertexai.init(
-    project=os.environ.get("GOOGLE_CLOUD_PROJECT", None),
-    location=os.environ.get("GOOGLE_CLOUD_LOCATION", None),
+    project=PROJECT_ID,
+    location=LOCATION,
 )
 
 
@@ -28,8 +32,8 @@ def get_recommended_deployment_config(model_id: str) -> dict[str, Any]:
         dict: status and content or error message with deployment options listed
         and indexed.
     """
-    project_id = os.environ["GOOGLE_CLOUD_PROJECT"].lower()
-    location = os.environ["GOOGLE_CLOUD_LOCATION"].lower()
+    project_id = PROJECT_ID
+    location = LOCATION
     model_id = model_id.lower()
 
     aiplatform.init(project=project_id, location=location)
