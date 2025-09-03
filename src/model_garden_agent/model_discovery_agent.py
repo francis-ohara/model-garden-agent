@@ -2,8 +2,9 @@ import os
 import subprocess
 
 from google.adk.agents import Agent
+from google.adk.tools import google_search
+from google.adk.tools import agent_tool
 from google.api_core import exceptions
-import requests
 import vertexai
 from vertexai import model_garden
 
@@ -17,89 +18,29 @@ vertexai.init(
     location=os.environ.get("GOOGLE_CLOUD_LOCATION", None),
 )
 
+search_agent = Agent(
+    model="gemini-2.5-flash",
+    name="search_agent",
+    description="""
+    An agent tool in a multi-agent system that specializes in running Google searches to retrieve information about specific Vertex AI Model Garden models that a user might be interested in.
+    """,
+    instruction="""
+    You're a search agent tool that specializes in running Google searches to retrieve information about specific Vertex AI Model Garden models that a user is interested in learning about.
+    Your purpose is to help users discover and compare specific AI models from Vertex AI Model Garden.
+    ALWAYS cite sources when providing information, like the model name and the source of the information directly.
+    Dont return any information that is not directly available in the sources.
 
-def make_model_garden_search_request(query: str) -> bool:
-    """Makes an authenticated GET request to the Model Garden search API, and handles all outputting of results and errors.
-
-    Args:
-        query: The search query string.
-
-    Returns:
-        True if the request and output were successful, False otherwise.
-    """
-    # Get the Google Cloud access token
-    try:
-        process = subprocess.run(
-            ["gcloud", "auth", "print-access-token"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        access_token = process.stdout.strip()
-    except subprocess.CalledProcessError as e:
-        print(f"Error getting access token: {e}")
-        return None
-
-    # Define the request parameters
-    project_id = os.environ.get("GOOGLE_CLOUD_PROJECT", None)
-    publisher = "google"
-    endpoint = "us-central1-aiplatform.googleapis.com"
-
-    # Construct the full URL with query parameters
-    url = f"https://{endpoint}/ui/publishers/{publisher}:search"
-    params = {"query": query}
-
-    print(f"Making request to: {url} with query: '{query}'")
-
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json",
-        "X-Goog-User-Project": project_id,
-    }
-
-    # Make the GET request
-    try:
-        response = requests.get(url, headers=headers, params=params)
-        response.raise_for_status()  # Raise an HTTPError for bad responses (4xx or 5xx)
-
-        search_results = response.json()
-        raw_data = search_results.get("publisherModels", [])
-
-        # formatted list for direct output
-        formatted_output = ""
-        if raw_data:
-            formatted_lines = [
-                f"I found {len(raw_data)} model(s) matching your request:"
-            ]
-            for model in raw_data:
-                display_name = model.get("displayName", "N/A")
-                overview = model.get("overview", "No description available.")
-                formatted_lines.append(f"\n- **Model Name:** {display_name}")
-                formatted_lines.append(f"  **Description:** {overview}")
-            formatted_output = "\n".join(formatted_lines)
-        else:
-            formatted_output = (
-                f"I could not find any models matching the query: '{query}'."
-            )
-
-        return {
-            "raw_data": raw_data,
-            "formatted_list": formatted_output,
-        }
-
-    except requests.exceptions.RequestException as e:
-        print(f"API request error: {e}")
-        return {
-            "raw_data": [],
-            "formatted_list": f"An API request error occurred: {e}",
-        }
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-        return {
-            "raw_data": [],
-            "formatted_list": f"An unexpected error occurred: {e}",
-        }
-
+   Preferred sources:
+      - Vertex AI Model Garden documentation
+      - Google Cloud blog/model comparison posts (only if relevant to Vertex AI)
+      - GitHub repos linked from Vertex AI Model Garden
+      - Hugging Face model pages
+      
+    - Stick to concise summaries and avoid general platform details or features unrelated to the models themselves.
+    - Avoid making up any model names or capabilities not found in documentation
+    """,
+    tools=[google_search],
+)
 
 def list_deployable_models(model_filter: str) -> dict:
     """Lists all deployable models on vertex model garden filtered by the given filter string.
@@ -155,33 +96,38 @@ model_discovery_agent = Agent(
     ),
     instruction=(
         """
-You are a specialized agent within a multi-agent system, focused on helping users find and reason about models in the Vertex AI Model Garden catalog. 
-You should not perform any web searches or answer general knowledge questions. Your knowledge is strictly limited to the Model Garden catalog.
+You are a specialized agent within a multi-agent system, focused on helping users find and reason about models available to deploy on Vertex AI. 
 
-Your primary role is to interpret a user's request and intelligently use the `make_model_garden_search_request` tool to find and present model information.
+Your primary role is to interpret a user's request and intelligently use either the `list_deployable_models` tool to find and present a list of models that the user can deploy,
+or the `google_search` tool to find out more information online about a specific model the user has in mind, or models the user would like to compare.
 
-When a user asks to find a model, follow these steps:
+Tool Orchestration Rules:
+    - Whenever you need to use the `google_search` tool to find out information about a specific model, first verify if the model the user wants to know about is
+    a deployable model by either calling the `list_deployable_models` tool with the model name as argument and verifying that the model is among the results, or by verifying from the conversation history 
+    if there's a previous response in which the `list_deployable_models` tool was called.
 
--   Step 1: Use the `make_model_garden_search_request` tool to retrieve data.
-    -   Call the `make_model_garden_search_request` tool with the user's query as the `query` argument.
+When a user asks to list deployable models, follow these steps:
+-   Step 1: Construct an appropriate filter string based on the user's request and call the `list_deployable_models` tool with the filter string as argument.
+        -   Ensure the filter string you construct is appropriate and that it only contains valid characters that may be found in a model name (letters, hyphens, numbers, underscores, and periods)
+-   Step 2: Present the results from the `list_deployable_models` tool to the user as a bulleted list with a bullet point for each model found.
+        -   Before listing the models, always state the number of models found first.
 
--   Step 2: Determine how to present the output based on user intent.
-    -   If the user's query was a Direct Search** (e.g., "list models with keyword `gemma`" or a specific model name), 
-        take the `formatted_list` string from the tool's output and present it directly to the user. Do not add any extra analysis.
-    -   If the user's query was a Reasoning Search** (e.g., "best lightweight model for text generation"), ignore the `formatted_list`. 
-        Instead, analyze the `raw_data` list to make a recommendation.
-        -   Filter and rank the models based on the user's criteria (e.g., "lightweight" implies low resource requirements, 
-            "best" implies a high trending score or popular downloads).
-        -   Construct a final conversational response that recommends the model(s) and explains the reasoning behind the choice.
 
 -   Step 3: Handle failures and out-of-scope requests.
-    -   If the `make_model_garden_search_request` tool's output indicates that no models were found, state that clearly.
-    -   If the user's request is completely outside the scope of Model Garden (e.g., "What is the weather?"), 
+    -   If the `list_deployable_models` tool's output indicates that no models were found, state that clearly.
+    -   If the user's request is completely outside the scope of discovering model garden models you can deploy on Vertex AI (e.g., "What is the weather?"), 
         indicate that you cannot help with that specific request and return control to the main agent.
+
+When a user asks to find information about a specific model they would like to deploy, follow these steps:
+-   Step 1: Intelligently use the Google Search tool to search for the desired information online
+        - Limit your search to results related to models on Vertex AI Model Garden or on Hugging Face.
+
+Note that, any model returned by the `list_deployable_models` tool is automatically available in Vertex AI Model Garden,
+as this tool is designed to only list models available for deployment on Vertex AI Model Garden.
 """
     ),
     tools=[
         list_deployable_models,
-        make_model_garden_search_request,
+        agent_tool.AgentTool(agent=search_agent),
     ],
 )
