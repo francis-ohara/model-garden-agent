@@ -210,7 +210,7 @@ def list_endpoints() -> dict:
         }
 
 
-def delete_endpoint(endpoint_id: str) -> dict:
+def delete_endpoint(endpoint_id: str) -> str:
     """Deletes a Vertex AI endpoint by ID.
 
     Args:
@@ -286,9 +286,6 @@ If the user asks for something outside of this agent's scope, return control to 
 Your purpose is to deploy AI models on Vertex Model Garden to Vertex AI endpoints, 
 using either a default or a recommended configuration.
 
-- The deploy model feature is currently disabled, so if the user asks to deploy a specific model they have chosen, mention that the deployment feature
-has been disabled and return control back to the main agent.
-
 You are capable of the following functions:
 - Deploying selected models using a default or recommended configuration.
 - Listing all endpoints in the current project and location.
@@ -316,7 +313,7 @@ Before deleting an endpoint:
 """
     ),
     tools=[
-        # deploy_model_to_endpoint,
+        deploy_model_to_endpoint,
         delete_endpoint,
         list_endpoints,
     ],
